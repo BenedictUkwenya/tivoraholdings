@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 180" width="180" height="180" role="img" aria-label="TivoraHoldings">
+  <title>TivoraHoldings</title>
+  <rect width="180" height="180" fill="url(#bg)"/>
+  <path d="M90 56 L138 132 H42 Z" fill="#FFFFFF" fill-opacity="0.97"/>
+  <path d="M90 88 L122 132 H58 Z" fill="url(#fg)" fill-opacity="0.55"/>
+  <defs>
+    <linearGradient id="bg" x1="20" y1="20" x2="160" y2="160" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F5B544"/>
+      <stop offset="1" stop-color="#8A4B0E"/>
+    </linearGradient>
+    <linearGradient id="fg" x1="55" y1="88" x2="125" y2="132" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F5B544"/>
+      <stop offset="1" stop-color="#B45309"/>
+    </linearGradient>
+  </defs>
+</svg>
