@@ -12,6 +12,7 @@ import {
   CheckCircle2,
   Bitcoin,
   Coins,
+  Loader2,
 } from "lucide-react";
 import UserLayout from "@/components/dashboard/user-layout";
 import { createClient } from "@/lib/supabase/client";
@@ -19,6 +20,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { formatCurrency } from "@/lib/utils";
+import { getPublicFileUrl } from "@/lib/storage";
+import type { PaymentWallet } from "@/types";
 
 interface InvestmentPlan {
   id: string;
@@ -78,31 +81,14 @@ const INVESTMENT_PLANS: InvestmentPlan[] = [
   },
 ];
 
-const CRYPTO_OPTIONS = [
-  {
-    id: "BTC",
-    name: "Bitcoin",
-    symbol: "BTC",
-    address: "bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh",
-    network: "Bitcoin Network",
-  },
-  {
-    id: "ETH",
-    name: "Ethereum",
-    symbol: "ETH",
-    address: "0x742d35Cc6634C0532925a3b844Bc454e4438f44e",
-    network: "ERC-20 Network",
-  },
-  {
-    id: "USDT",
-    name: "Tether",
-    symbol: "USDT",
-    address: "TGJ5vBzqGrMpWFLb5XsQN6FLR7SkFYRTzM",
-    network: "TRC-20 Network",
-  },
-];
-
 const STEPS = ["Select Plan", "Select Crypto", "Enter Amount", "Upload Proof"];
+
+function cryptoIcon(currency: string) {
+  const c = currency.toUpperCase();
+  if (c === "BTC") return <Bitcoin className="h-5 w-5 text-orange-400" />;
+  if (c === "ETH") return <Coins className="h-5 w-5 text-blue-400" />;
+  return <Coins className="h-5 w-5 text-emerald-400" />;
+}
 
 export default function DepositPage() {
   const router = useRouter();
@@ -112,7 +98,9 @@ export default function DepositPage() {
   const [step, setStep] = useState(0);
   const [userId, setUserId] = useState<string | null>(null);
   const [selectedPlan, setSelectedPlan] = useState<InvestmentPlan | null>(null);
-  const [selectedCrypto, setSelectedCrypto] = useState<typeof CRYPTO_OPTIONS[0] | null>(null);
+  const [wallets, setWallets] = useState<PaymentWallet[]>([]);
+  const [walletsLoading, setWalletsLoading] = useState(true);
+  const [selectedCrypto, setSelectedCrypto] = useState<PaymentWallet | null>(null);
   const [amount, setAmount] = useState("");
   const [proofFile, setProofFile] = useState<File | null>(null);
   const [proofPreview, setProofPreview] = useState<string | null>(null);
@@ -127,6 +115,19 @@ export default function DepositPage() {
       if (!session) router.push("/auth/login");
       else setUserId(session.user.id);
     });
+  }, []);
+
+  useEffect(() => {
+    async function loadWallets() {
+      const { data } = await supabase
+        .from("payment_wallets")
+        .select("*")
+        .eq("is_active", true)
+        .order("sort_order", { ascending: true });
+      setWallets((data ?? []) as PaymentWallet[]);
+      setWalletsLoading(false);
+    }
+    loadWallets();
   }, []);
 
   function handleCopyAddress() {
@@ -201,7 +202,7 @@ export default function DepositPage() {
       const { error: insertError } = await supabase.from("deposits").insert({
         user_id: userId,
         amount: parseFloat(amount),
-        currency: selectedCrypto.id,
+        currency: selectedCrypto.currency,
         plan: selectedPlan.id,
         proof_url: fileName,
         status: "pending",
@@ -240,7 +241,7 @@ export default function DepositPage() {
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground text-sm">Currency</span>
-              <span className="text-foreground text-sm font-medium">{selectedCrypto?.symbol}</span>
+                  <span className="text-foreground text-sm font-medium">{selectedCrypto?.currency}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground text-sm">Status</span>
@@ -334,36 +335,44 @@ export default function DepositPage() {
               <p className="text-muted-foreground text-sm mb-6">
                 Choose your preferred cryptocurrency to make payment.
               </p>
-              <div className="space-y-3">
-                {CRYPTO_OPTIONS.map((crypto) => (
-                  <button
-                    key={crypto.id}
-                    onClick={() => setSelectedCrypto(crypto)}
-                    className={`w-full flex items-center gap-4 p-4 rounded-xl border transition-all text-left ${
-                      selectedCrypto?.id === crypto.id
-                        ? "border-[#D4A853] bg-[#D4A853]/10"
-                        : "border-border bg-muted/40 hover:bg-muted/50"
-                    }`}
-                  >
-                    <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center flex-shrink-0">
-                      {crypto.id === "BTC" ? (
-                        <Bitcoin className="h-5 w-5 text-orange-400" />
-                      ) : crypto.id === "ETH" ? (
-                        <Coins className="h-5 w-5 text-blue-400" />
-                      ) : (
-                        <Coins className="h-5 w-5 text-emerald-400" />
+              {walletsLoading ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="h-6 w-6 animate-spin text-[#D4A853]" />
+                </div>
+              ) : wallets.length === 0 ? (
+                <div className="rounded-xl border border-border bg-muted/40 p-6 text-center">
+                  <AlertCircle className="h-6 w-6 mx-auto mb-2 text-muted-foreground" />
+                  <p className="text-foreground text-sm font-medium">No payment methods available</p>
+                  <p className="text-muted-foreground text-xs mt-1">
+                    Please contact support — payment options haven&apos;t been configured yet.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {wallets.map((w) => (
+                    <button
+                      key={w.id}
+                      onClick={() => setSelectedCrypto(w)}
+                      className={`w-full flex items-center gap-4 p-4 rounded-xl border transition-all text-left ${
+                        selectedCrypto?.id === w.id
+                          ? "border-[#D4A853] bg-[#D4A853]/10"
+                          : "border-border bg-muted/40 hover:bg-muted/50"
+                      }`}
+                    >
+                      <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center flex-shrink-0">
+                        {cryptoIcon(w.currency)}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-foreground font-semibold truncate">{w.name}</p>
+                        <p className="text-muted-foreground text-xs truncate">{w.network}</p>
+                      </div>
+                      {selectedCrypto?.id === w.id && (
+                        <Check className="h-5 w-5 text-[#D4A853] flex-shrink-0" />
                       )}
-                    </div>
-                    <div className="flex-1">
-                      <p className="text-foreground font-semibold">{crypto.name}</p>
-                      <p className="text-muted-foreground text-xs">{crypto.network}</p>
-                    </div>
-                    {selectedCrypto?.id === crypto.id && (
-                      <Check className="h-5 w-5 text-[#D4A853] flex-shrink-0" />
-                    )}
-                  </button>
-                ))}
-              </div>
+                    </button>
+                  ))}
+                </div>
+              )}
 
               {selectedCrypto && (
                 <div className="mt-5 p-4 rounded-xl bg-muted/40 border border-border">
@@ -385,11 +394,19 @@ export default function DepositPage() {
                   <p className="text-foreground text-xs font-mono break-all leading-relaxed">
                     {selectedCrypto.address}
                   </p>
-                  <div className="flex items-center justify-center mt-4 p-6 rounded-lg bg-muted/40 border border-dashed border-border">
-                    <div className="text-center">
-                      <QrCode className="h-10 w-10 text-muted-foreground/40 mx-auto mb-1" />
-                      <p className="text-muted-foreground/40 text-[10px]">QR Code</p>
-                    </div>
+                  <div className="flex items-center justify-center mt-4 p-4 rounded-lg bg-white border border-border">
+                    {selectedCrypto.qr_path ? (
+                      <img
+                        src={getPublicFileUrl("wallet-qr-codes", selectedCrypto.qr_path)}
+                        alt={`${selectedCrypto.name} QR code`}
+                        className="w-44 h-44 object-contain"
+                      />
+                    ) : (
+                      <div className="text-center text-zinc-500 py-12 px-8">
+                        <QrCode className="h-10 w-10 mx-auto mb-1 opacity-50" />
+                        <p className="text-[10px]">No QR uploaded for this wallet yet</p>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}

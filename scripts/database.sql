@@ -424,6 +424,78 @@ ON CONFLICT (name) DO NOTHING;
 -- ─── MAKE FIRST USER ADMIN (optional helper) ────────────────
 -- UPDATE public.users SET is_admin = true WHERE email = 'your-admin@email.com';
 
+-- ─── PAYMENT WALLETS (admin-editable) ───────────────────────
+CREATE TABLE IF NOT EXISTS public.payment_wallets (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  currency    TEXT UNIQUE NOT NULL,   -- key used in code (BTC, ETH, USDT, ...)
+  name        TEXT NOT NULL,           -- display name (Bitcoin)
+  network     TEXT NOT NULL,           -- e.g. "Bitcoin Network", "ERC-20"
+  address     TEXT NOT NULL,
+  qr_path     TEXT,                    -- storage path inside wallet-qr-codes bucket
+  is_active   BOOLEAN NOT NULL DEFAULT true,
+  sort_order  INT NOT NULL DEFAULT 0,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_payment_wallets_active ON public.payment_wallets(is_active, sort_order);
+
+ALTER TABLE public.payment_wallets ENABLE ROW LEVEL SECURITY;
+
+-- Anyone signed in sees active wallets; admins see everything
+DROP POLICY IF EXISTS "wallets_read_active" ON public.payment_wallets;
+CREATE POLICY "wallets_read_active" ON public.payment_wallets
+  FOR SELECT USING (is_active OR public.is_admin(auth.uid()));
+
+-- Only admins can write
+DROP POLICY IF EXISTS "wallets_admin_write" ON public.payment_wallets;
+CREATE POLICY "wallets_admin_write" ON public.payment_wallets
+  FOR ALL USING (public.is_admin(auth.uid())) WITH CHECK (public.is_admin(auth.uid()));
+
+-- Touch updated_at on UPDATE
+CREATE OR REPLACE FUNCTION public.touch_updated_at()
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+  NEW.updated_at = now();
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_payment_wallets_touch ON public.payment_wallets;
+CREATE TRIGGER trg_payment_wallets_touch
+  BEFORE UPDATE ON public.payment_wallets
+  FOR EACH ROW EXECUTE FUNCTION public.touch_updated_at();
+
+-- Seed with the three wallets that were previously hardcoded
+INSERT INTO public.payment_wallets (currency, name, network, address, sort_order)
+VALUES
+  ('BTC',  'Bitcoin',  'Bitcoin Network', 'bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh', 1),
+  ('ETH',  'Ethereum', 'ERC-20 Network',  '0x742d35Cc6634C0532925a3b844Bc454e4438f44e', 2),
+  ('USDT', 'Tether',   'TRC-20 Network',  'TGJ5vBzqGrMpWFLb5XsQN6FLR7SkFYRTzM',          3)
+ON CONFLICT (currency) DO NOTHING;
+
+-- Public storage bucket for QR codes (no sensitive data, public read is fine)
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('wallet-qr-codes', 'wallet-qr-codes', true)
+ON CONFLICT (id) DO UPDATE SET public = true;
+
+-- Storage RLS — public can read, only admins can write
+DROP POLICY IF EXISTS "wallet_qr_public_read" ON storage.objects;
+CREATE POLICY "wallet_qr_public_read" ON storage.objects
+  FOR SELECT USING (bucket_id = 'wallet-qr-codes');
+
+DROP POLICY IF EXISTS "wallet_qr_admin_insert" ON storage.objects;
+CREATE POLICY "wallet_qr_admin_insert" ON storage.objects
+  FOR INSERT WITH CHECK (bucket_id = 'wallet-qr-codes' AND public.is_admin(auth.uid()));
+
+DROP POLICY IF EXISTS "wallet_qr_admin_update" ON storage.objects;
+CREATE POLICY "wallet_qr_admin_update" ON storage.objects
+  FOR UPDATE USING (bucket_id = 'wallet-qr-codes' AND public.is_admin(auth.uid()));
+
+DROP POLICY IF EXISTS "wallet_qr_admin_delete" ON storage.objects;
+CREATE POLICY "wallet_qr_admin_delete" ON storage.objects
+  FOR DELETE USING (bucket_id = 'wallet-qr-codes' AND public.is_admin(auth.uid()));
+
 -- ─── DONE ───────────────────────────────────────────────────
 -- TivoraHoldings database setup complete.
 -- Next steps:

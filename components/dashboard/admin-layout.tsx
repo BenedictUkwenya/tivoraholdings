@@ -5,7 +5,7 @@ import Link from "next/link"
 import {
   LayoutDashboard, Users, ArrowDownCircle, ArrowUpCircle,
   History, MessageCircle, FileBarChart, Shield, Settings, LogOut,
-  Menu, X, ChevronRight,
+  Menu, X, ChevronRight, Wallet,
 } from "lucide-react"
 import { useState } from "react"
 import { createClient } from "@/lib/supabase/client"
@@ -19,6 +19,7 @@ const navItems = [
   { label: "Deposits", href: "/dashboard/admin/deposits", icon: ArrowDownCircle },
   { label: "Withdrawals", href: "/dashboard/admin/withdrawals", icon: ArrowUpCircle },
   { label: "Transactions", href: "/dashboard/admin/transactions", icon: History },
+  { label: "Wallets", href: "/dashboard/admin/wallets", icon: Wallet },
   { label: "KYC Reviews", href: "/dashboard/admin/kyc", icon: Shield },
   { label: "Messages", href: "/dashboard/admin/messages", icon: MessageCircle },
   { label: "Reports", href: "/dashboard/admin/reports", icon: FileBarChart },

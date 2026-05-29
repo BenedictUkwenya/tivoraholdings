@@ -102,3 +102,16 @@ export interface Referral {
   created_at: string
   referred_user?: { full_name: string; email: string; created_at: string }
 }
+
+export interface PaymentWallet {
+  id: string
+  currency: string
+  name: string
+  network: string
+  address: string
+  qr_path: string | null
+  is_active: boolean
+  sort_order: number
+  created_at: string
+  updated_at: string
+}
